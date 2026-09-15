@@ -1,0 +1,60 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+}
+
+/* Message d'erreur */
+.message-error {
+    background-color: #f44336;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+/* Grille des cartes météo */
+.meteo-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.meteo-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    width: 240px;
+}
+
+.meteo-date {
+    font-weight: bold;
+    color: #333;
+    margin: 0 0 4px;
+}
+
+.meteo-details {
+    color: #666;
+    margin: 0 0 8px;
+}
+
+.meteo-temp {
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #2575fc;
+    margin: 0 0 8px;
+}
+
+.meteo-comment {
+    color: #555;
+    font-style: italic;
+    margin: 0;
+}
