@@ -4,10 +4,11 @@ require_once(__DIR__ . '/../config.php');
 
 class Meteo
 {
-    // importe les donnees d'un fichier CSV meteo et les enregistre en BDD
+    // importe les données d'un fichier CSV météo et les enregistre en BDD
+    // Pour chaque ligne : met à jour la prévision si elle existe déjà (même date+ville+periode),
+    // sinon l'insère comme nouvelle prévision.
     public function insertCsvData($filename)
     {
-        // verification si fichier existe et si cʼest bien un format .csv
         if (!file_exists($filename)) {
             return "Le fichier $filename est introuvable.";
         }
@@ -17,46 +18,73 @@ class Meteo
             return "Le fichier $filename n'est pas un fichier CSV.";
         }
 
-        // connexion à la BDD
         $mysqli = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
         if ($mysqli->connect_errno) {
             return "Echec de la connexion à la base de données : " . $mysqli->connect_error;
         }
 
-        // on verifie si la table est deja remplie, pour eviter les doublons a chaque rechargement
-        $check = $mysqli->query("SELECT COUNT(*) as total FROM meteo");
-        $row_check = $check->fetch_array();
-
-        if ($row_check['total'] == 0) {
-            // si table vide -> on importe
-
-            $handle = fopen($filename, 'r');
-            //on ouvre le fichier csv
-            if ($handle === false) {
-                //si echoue on retourne erreur
-                return "Impossible d'ouvrir le fichier $filename.";
-            }
-
-            while (($data = fgetcsv($handle, 1000, ';')) !== false) {
-                //tant que fgetcsv lit une ligne
-                $success = $mysqli->query("INSERT INTO meteo (date_meteo, ville, periode, resume, id_resume, Temp_min, Temp_max, commentaire) VALUES ('" . $data[0] . "', '" . $data[1] . "', '" . $data[2] . "', '" . $data[3] . "', '" . $data[4] . "', '" . $data[5] . "', '" . $data[6] . "', '" . $data[7] . "')");
-                //pour chaque lignes lue on exécute la rêq insert into dans la BDD 
-
-                if (!$success) {
-                    fclose($handle);
-                    return "Erreur lors de l'insertion en base : " . $mysqli->error;
-                }
-                //si probleme dʼinsertion en BDD
-            }
-
-            fclose($handle);
-            //comme closedir 
+        $handle = fopen($filename, 'r');
+        if ($handle === false) {
+            return "Impossible d'ouvrir le fichier $filename.";
         }
 
+        $ligne_num = 0;
+        while (($data = fgetcsv($handle, 1000, ';')) !== false) {
+            $ligne_num++;
+
+            // ---- 1. VALIDATION DES DONNÉES DE LA LIGNE ----
+            if (count($data) < 8) {
+                fclose($handle);
+                return "Ligne $ligne_num invalide : nombre de colonnes incorrect.";
+            }
+
+            $date_meteo  = trim($data[0]);
+            $ville       = trim($data[1]);
+            $periode     = trim($data[2]);
+            $resume      = trim($data[3]);
+            $id_resume   = trim($data[4]);
+            $temp_min    = trim($data[5]);
+            $temp_max    = trim($data[6]);
+            $commentaire = trim($data[7]);
+
+            if (empty($date_meteo) || empty($ville) || empty($periode)) {
+                fclose($handle);
+                return "Ligne $ligne_num invalide : champ obligatoire manquant.";
+            }
+
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_meteo)) {
+                fclose($handle);
+                return "Ligne $ligne_num invalide : format de date incorrect ($date_meteo).";
+            }
+
+            if (!is_numeric($temp_min) || !is_numeric($temp_max) || !is_numeric($id_resume)) {
+                fclose($handle);
+                return "Ligne $ligne_num invalide : température ou id_resume non numérique.";
+            }
+
+            // ---- 2. VÉRIFIE SI CETTE PRÉVISION EXISTE DÉJÀ ----
+            $check = $mysqli->query("SELECT COUNT(*) as total FROM meteo WHERE date_meteo = '$date_meteo' AND ville = '$ville' AND periode = '$periode'");
+            $row_check = $check->fetch_array();
+
+            if ($row_check['total'] > 0) {
+                // existe déjà -> UPDATE
+                $success = $mysqli->query("UPDATE meteo SET resume = '$resume', id_resume = '$id_resume', Temp_min = '$temp_min', Temp_max = '$temp_max', commentaire = '$commentaire' WHERE date_meteo = '$date_meteo' AND ville = '$ville' AND periode = '$periode'");
+            } else {
+                // n'existe pas -> INSERT
+                $success = $mysqli->query("INSERT INTO meteo (date_meteo, ville, periode, resume, id_resume, Temp_min, Temp_max, commentaire) VALUES ('$date_meteo', '$ville', '$periode', '$resume', '$id_resume', '$temp_min', '$temp_max', '$commentaire')");
+            }
+
+            if (!$success) {
+                fclose($handle);
+                return "Erreur lors de l'enregistrement de la ligne $ligne_num : " . $mysqli->error;
+            }
+        }
+
+        fclose($handle);
         return true;
     }
 
-    // recupere les previsions meteo du lendemain et du surlendemain (a partir dʼune date de reference fixe)
+    // récupère les prévisions météo du lendemain et du surlendemain
     public function getSortData()
     {
         $mysqli = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
@@ -69,15 +97,13 @@ class Meteo
         $apres_demain = date('Y-m-d', strtotime($reference . ' +2 days'));
 
         $result = $mysqli->query("SELECT * FROM meteo WHERE date_meteo IN ('$demain', '$apres_demain')");
-        //on ne recupere que le lendemain et le surlendemain
 
         if (!$result) {
             return "Erreur lors de la récupération des données : " . $mysqli->error;
         }
 
-        $meteo_data = []; // tableau vide
+        $meteo_data = [];
         while ($row = $result->fetch_array()) {
-            //tant quʼil y a un resultat on insere ses derniers dans le tableau 
             $meteo_data[] = $row;
         }
 
